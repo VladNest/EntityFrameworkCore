@@ -1,9 +1,12 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Internal;
 
@@ -58,8 +61,14 @@ namespace Microsoft.EntityFrameworkCore.Query
 
             if (innerExpression is MemberInitExpression memberInitExpression)
             {
-                return ((MemberAssignment)memberInitExpression.Bindings
-                    .Single(mb => mb.Member == memberExpression.Member)).Expression;
+                var binding = memberInitExpression.Bindings.Single(mb => mb.Member == memberExpression.Member);
+                return binding switch
+                {
+                    MemberAssignment assignment => assignment.Expression,
+                    MemberMemberBinding memberMember => Expression.MemberInit(Expression.New(memberMember.Member.GetMemberType()), memberMember.Bindings),
+                    MemberListBinding memberList => throw new NotImplementedException("MemberListBinding not yet handled in ReplacingExpressionVisitor"),
+                    _ => throw new InvalidOperationException("Unhandled member binding type: " + binding.BindingType)
+                };
             }
 
             return memberExpression.Update(innerExpression);

@@ -213,30 +213,9 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
 
                         hash.Add(memberInitExpression.NewExpression, this);
 
-                        for (var i = 0; i < memberInitExpression.Bindings.Count; i++)
+                        foreach (var binding in memberInitExpression.Bindings)
                         {
-                            var memberBinding = memberInitExpression.Bindings[i];
-
-                            hash.Add(memberBinding.Member);
-                            hash.Add(memberBinding.BindingType);
-
-                            switch (memberBinding.BindingType)
-                            {
-                                case MemberBindingType.Assignment:
-                                    var memberAssignment = (MemberAssignment)memberBinding;
-                                    hash.Add(memberAssignment.Expression, this);
-                                    break;
-                                case MemberBindingType.ListBinding:
-                                    var memberListBinding = (MemberListBinding)memberBinding;
-                                    for (var j = 0; j < memberListBinding.Initializers.Count; j++)
-                                    {
-                                        AddListToHash(ref hash, memberListBinding.Initializers[j].Arguments);
-                                    }
-
-                                    break;
-                                default:
-                                    throw new NotImplementedException();
-                            }
+                            ProcessMemberBinding(ref hash, binding);
                         }
 
                         break;
@@ -302,6 +281,34 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
                 }
 
                 return hash.ToHashCode();
+            }
+
+            void ProcessMemberBinding(ref HashCode hash, MemberBinding memberBinding)
+            {
+                hash.Add(memberBinding.Member);
+                hash.Add(memberBinding.BindingType);
+
+                switch (memberBinding)
+                {
+                    case MemberAssignment assignment:
+                        hash.Add(assignment.Expression, this);
+                        break;
+                    case MemberMemberBinding memberMember:
+                        foreach (var subBinding in memberMember.Bindings)
+                        {
+                            ProcessMemberBinding(ref hash, subBinding);
+                        }
+                        break;
+                    case MemberListBinding memberList:
+                        for (var j = 0; j < memberList.Initializers.Count; j++)
+                        {
+                            AddListToHash(ref hash, memberList.Initializers[j].Arguments);
+                        }
+
+                        break;
+                    default:
+                        throw new InvalidOperationException("Unhandled member binding type: " + memberBinding.BindingType);
+                }
             }
         }
 
@@ -711,7 +718,7 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
                     case MemberBindingType.MemberBinding:
                         return CompareMemberMemberBinding((MemberMemberBinding)a, (MemberMemberBinding)b);
                     default:
-                        throw new NotImplementedException();
+                        throw new InvalidOperationException("Unhandled member binding type: " + a.BindingType);
                 }
             }
 

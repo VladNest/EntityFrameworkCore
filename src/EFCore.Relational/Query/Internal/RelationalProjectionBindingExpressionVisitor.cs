@@ -232,37 +232,43 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
 
         protected override Expression VisitMemberInit(MemberInitExpression memberInitExpression)
         {
-            var newExpression = (NewExpression)Visit(memberInitExpression.NewExpression);
+            var newExpression = VisitAndConvert(memberInitExpression.NewExpression, nameof(VisitMemberInit));
             if (newExpression == null)
             {
                 return null;
             }
 
-            var newBindings = new MemberAssignment[memberInitExpression.Bindings.Count];
+            var newBindings = new MemberBinding[memberInitExpression.Bindings.Count];
             for (var i = 0; i < newBindings.Length; i++)
             {
-                var memberAssignment = (MemberAssignment)memberInitExpression.Bindings[i];
-                if (_clientEval)
+                newBindings[i] = VisitMemberBinding(memberInitExpression.Bindings[i]);
+                if (newBindings[i] == null)
                 {
-                    newBindings[i] = memberAssignment.Update(Visit(memberAssignment.Expression));
-                }
-                else
-                {
-                    var projectionMember = _projectionMembers.Peek().Append(memberAssignment.Member);
-                    _projectionMembers.Push(projectionMember);
-
-                    var visitedExpression = Visit(memberAssignment.Expression);
-                    if (visitedExpression == null)
-                    {
-                        return null;
-                    }
-
-                    newBindings[i] = memberAssignment.Update(visitedExpression);
-                    _projectionMembers.Pop();
+                    return null;
                 }
             }
 
             return memberInitExpression.Update(newExpression, newBindings);
+        }
+
+        protected override MemberAssignment VisitMemberAssignment(MemberAssignment memberAssignment)
+        {
+            if (_clientEval)
+            {
+                return memberAssignment.Update(Visit(memberAssignment.Expression));
+            }
+
+            var projectionMember = _projectionMembers.Peek().Append(memberAssignment.Member);
+            _projectionMembers.Push(projectionMember);
+
+            var visitedExpression = Visit(memberAssignment.Expression);
+            if (visitedExpression == null)
+            {
+                return null;
+            }
+
+            _projectionMembers.Pop();
+            return memberAssignment.Update(visitedExpression);
         }
 
         // TODO: Debugging
