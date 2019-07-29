@@ -40,5 +40,8 @@ namespace Microsoft.EntityFrameworkCore.Query
         public override void Include_Union_different_includes_throws() {}
         public override Task SubSelect_Union(bool isAsync) => Task.CompletedTask;
         public override Task Client_eval_Union_FirstOrDefault(bool isAsync) => Task.CompletedTask;
+        public override Task GroupBy_Select_Union(bool isAsync) => Task.CompletedTask;
+        public override Task Union_over_different_projection_types(bool isAsync) => Task.CompletedTask;
+
     }
 }

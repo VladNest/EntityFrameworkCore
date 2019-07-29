@@ -334,5 +334,36 @@ SELECT [c0].[CustomerID], [c0].[Address], [c0].[City], [c0].[CompanyName], [c0].
     WHERE ([c0].[CustomerID] = [o0].[CustomerID]) AND [o0].[CustomerID] IS NOT NULL) AS [Orders]
 FROM [Customers] AS [c0]");
         }
+
+        public override async Task GroupBy_Select_Union(bool isAsync)
+        {
+            await base.GroupBy_Select_Union(isAsync);
+
+            AssertSql(
+                @"SELECT [c].[CustomerID], COUNT(*) AS [Count]
+FROM [Customers] AS [c]
+WHERE ([c].[City] = N'Berlin') AND [c].[City] IS NOT NULL
+GROUP BY [c].[CustomerID]
+UNION
+SELECT [c0].[CustomerID], COUNT(*) AS [Count]
+FROM [Customers] AS [c0]
+WHERE ([c0].[City] = N'London') AND [c0].[City] IS NOT NULL
+GROUP BY [c0].[CustomerID]");
+        }
+
+        public override async Task Union_over_different_projection_types(bool isAsync)
+        {
+            await base.Union_over_different_projection_types(isAsync);
+
+            AssertSql(
+                @"SELECT [c].[CustomerID], COUNT(*) AS [Count]
+FROM [Customers] AS [c]
+WHERE ([c].[City] = N'Berlin') AND [c].[City] IS NOT NULL
+GROUP BY [c].[CustomerID]
+UNION
+SELECT [c0].[CustomerID], CAST(LEN([c0].[ContactName]) AS int) AS [Count]
+FROM [Customers] AS [c0]
+WHERE ([c0].[City] = N'London') AND [c0].[City] IS NOT NULL");
+        }
     }
 }

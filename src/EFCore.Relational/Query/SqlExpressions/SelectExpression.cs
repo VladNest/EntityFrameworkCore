@@ -452,17 +452,19 @@ namespace Microsoft.EntityFrameworkCore.Query.SqlExpressions
                         continue;
                     }
 
-                    if (joinedMapping.Value1 is ColumnExpression && joinedMapping.Value2 is ColumnExpression
-                        || joinedMapping.Value1 is ScalarSubqueryExpression && joinedMapping.Value2 is ScalarSubqueryExpression)
+                    if (joinedMapping.Value1 is SqlExpression innerColumn1
+                        && joinedMapping.Value2 is SqlExpression innerColumn2)
                     {
-                        handleColumnMapping(
-                            joinedMapping.Key,
-                            select1, (SqlExpression)joinedMapping.Value1,
-                            select2, (SqlExpression)joinedMapping.Value2);
+                        // The actual columns may actually be different, but we don't care as long as the type and alias
+                        // coming out of the two operands are the same
+                        var alias = joinedMapping.Key.Last?.Name;
+                        select1.AddToProjection(innerColumn1, alias);
+                        select2.AddToProjection(innerColumn2, alias);
+                        _projectionMapping[joinedMapping.Key] = innerColumn1;
                         continue;
                     }
 
-                    throw new InvalidOperationException("Non-matching or unknown projection mapping type in set operation");
+                    throw new InvalidOperationException($"Non-matching or unknown projection mapping type in set operation ({joinedMapping.Value1.GetType().Name} and {joinedMapping.Value2.GetType().Name})");
                 }
             }
 
@@ -519,19 +521,6 @@ namespace Microsoft.EntityFrameworkCore.Query.SqlExpressions
                 }
 
                 return column1;
-            }
-
-            void handleColumnMapping(
-                ProjectionMember projectionMember,
-                SelectExpression select1, SqlExpression innerColumn1,
-                SelectExpression select2, SqlExpression innerColumn2)
-            {
-                // The actual columns may actually be different, but we don't care as long as the type and alias
-                // coming out of the two operands are the same
-                var alias = projectionMember.Last?.Name;
-                select1.AddToProjection(innerColumn1, alias);
-                select2.AddToProjection(innerColumn2, alias);
-                _projectionMapping[projectionMember] = innerColumn1;
             }
         }
 

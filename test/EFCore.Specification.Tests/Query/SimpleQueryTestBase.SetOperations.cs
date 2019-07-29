@@ -339,5 +339,28 @@ namespace Microsoft.EntityFrameworkCore.Query
                 .Union(cs));
 
         private static Customer ClientSideMethod(Customer c) => c;
+
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task GroupBy_Select_Union(bool isAsync)
+            => AssertQuery<Customer>(isAsync, cs => cs
+                    .Where(c => c.City == "Berlin")
+                    .GroupBy(c => c.CustomerID)
+                    .Select(g => new { CustomerID = g.Key, Count = g.Count() })
+                    .Union(cs
+                        .Where(c => c.City == "London")
+                        .GroupBy(c => c.CustomerID)
+                        .Select(g => new { CustomerID = g.Key, Count = g.Count() })));
+
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Union_over_different_projection_types(bool isAsync)
+            => AssertQuery<Customer>(isAsync, cs => cs
+                .Where(c => c.City == "Berlin")
+                .GroupBy(c => c.CustomerID)
+                .Select(g => new { CustomerID = g.Key, Count = g.Count() })
+                .Union(cs
+                    .Where(c => c.City == "London")
+                    .Select(c => new { c.CustomerID, Count = c.ContactName.Length })));
     }
 }
