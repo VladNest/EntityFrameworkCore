@@ -187,6 +187,15 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
                 }
             }
 
+            // We handled the Contains extension method above, but there's also List.Contains and potentially others on ICollection
+            if (methodCallExpression.Method.Name == "Contains"
+                && methodCallExpression.Method.ReturnType == typeof(bool)
+                && methodCallExpression.Arguments.Count == 1
+                && methodCallExpression.Object?.Type.TryGetSequenceType() == methodCallExpression.Arguments[0].Type)
+            {
+                return VisitContainsMethodCall(methodCallExpression);
+            }
+
             // TODO: Can add an extension point that can be overridden by subclassing visitors to recognize additional methods and flow through the entity type.
             // Do this here, since below we visit the arguments (avoid double visitation)
 
@@ -258,16 +267,18 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
 
         protected virtual Expression VisitContainsMethodCall(MethodCallExpression methodCallExpression)
         {
-            var arguments = methodCallExpression.Arguments;
-            var newSource = Visit(arguments[0]);
-            var newItem = Visit(arguments[1]);
+            // We handle both Contains the extension method and the instance method
+            var (newSource, newItem) = methodCallExpression.Arguments.Count == 2
+                ? (methodCallExpression.Arguments[0], methodCallExpression.Arguments[1])
+                : (methodCallExpression.Object, methodCallExpression.Arguments[0]);
+            (newSource, newItem) = (Visit(newSource), Visit(newItem));
 
             var sourceEntityType = (newSource as EntityReferenceExpression)?.EntityType;
             var itemEntityType = (newItem as EntityReferenceExpression)?.EntityType;
 
             if (sourceEntityType == null && itemEntityType == null)
             {
-                return methodCallExpression.Update(null, new[] { newSource, newItem });
+                return NoTranslation();
             }
 
             if (sourceEntityType != null && itemEntityType != null
@@ -280,15 +291,22 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
             var entityType = sourceEntityType ?? itemEntityType;
 
             var keyProperties = entityType.FindPrimaryKey().Properties;
-            var keyProperty = keyProperties.Count == 1
-                ? keyProperties.Single()
-                : throw new NotSupportedException(CoreStrings.EntityEqualityContainsWithCompositeKeyNotSupported(entityType.DisplayName()));
+            if (keyProperties.Count > 1)
+            {
+                // We usually throw on composite keys, but here specifically we don't in order to allow Any(Contains()) to be translated
+                // by nav expansion (see test Where_contains_on_navigation_with_composite_keys)
+                return NoTranslation();
+            }
+            var keyProperty = keyProperties.Single();
 
             // Wrap the source with a projection to its primary key, and the item with a primary key access expression
+            var isQueryable = Unwrap(newSource).Type.IsQueryableType();
             var param = Expression.Parameter(entityType.ClrType, "v");
             var keySelector = Expression.Lambda(CreatePropertyAccessExpression(param, keyProperty), param);
             var keyProjection = Expression.Call(
-                LinqMethodHelpers.QueryableSelectMethodInfo.MakeGenericMethod(entityType.ClrType, keyProperty.ClrType),
+                (isQueryable
+                    ? LinqMethodHelpers.QueryableSelectMethodInfo
+                    : LinqMethodHelpers.EnumerableSelectMethodInfo).MakeGenericMethod(entityType.ClrType, keyProperty.ClrType),
                 Unwrap(newSource),
                 keySelector);
 
@@ -297,10 +315,16 @@ namespace Microsoft.EntityFrameworkCore.Query.Internal
                 : CreatePropertyAccessExpression(Unwrap(newItem), keyProperty);
 
             return Expression.Call(
-                LinqMethodHelpers.QueryableContainsMethodInfo.MakeGenericMethod(keyProperty.ClrType),
+                (isQueryable
+                    ? LinqMethodHelpers.QueryableContainsMethodInfo
+                    : LinqMethodHelpers.EnumerableContainsMethodInfo).MakeGenericMethod(keyProperty.ClrType),
                 keyProjection,
                 rewrittenItem
             );
+
+            Expression NoTranslation() => methodCallExpression.Arguments.Count == 2
+                ? methodCallExpression.Update(null, new[] { Unwrap(newSource), Unwrap(newItem) })
+                : methodCallExpression.Update(Unwrap(newSource), new[] { Unwrap(newItem) });
         }
 
         protected virtual Expression VisitOrderingMethodCall(MethodCallExpression methodCallExpression)

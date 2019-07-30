@@ -1510,6 +1510,17 @@ namespace Microsoft.EntityFrameworkCore.Query
             }
         }
 
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task List_Contains_over_entityType_should_rewrite_to_identity_equality(bool isAsync)
+        {
+            var someOrder = new Order { OrderID = 10248 };
+
+            return AssertQuery<Customer>(isAsync, cs =>
+                cs.Where(c => c.Orders.Contains(someOrder)),
+                entryCount: 1);
+        }
+
         [ConditionalFact]
         public virtual void Contains_over_entityType_with_null_should_rewrite_to_identity_equality()
         {
